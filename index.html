@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLEM 3D Concept Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/TransformControls.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #333333; margin: 0; overflow: hidden; }
+        #app-container { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
+        #top-bar { background-color: #444444; padding: 0.5rem 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: space-between; }
+        .blender-panel { background-color: #2c2c2c; border-radius: 0.375rem; box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3); padding: 0.5rem; }
+        .blender-button { background-color: #555555; color: #ffffff; padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; transition: background-color 0.15s; cursor: pointer; border: 1px solid #666666; }
+        .blender-button:hover { background-color: #6a6a6a; }
+        .blender-button.active { background-color: #007bff; border-color: #007bff; }
+        #viewport-editor-grid { display: grid; grid-template-columns: 2fr 1fr; height: calc(100vh - 56px); }
+        #three-container { position: relative; background-color: #1a1a1a; }
+        canvas { display: block; filter: saturate(1.2) contrast(1.1); /* Aesthetic filter */ }
+        #code-editor-container { overflow-y: auto; display: flex; flex-direction: column; }
+        #code-output { background-color: #111111; color: #00ff00; height: 150px; overflow-y: scroll; padding: 10px; font-family: monospace; border-radius: 0.375rem; margin-top: 0.5rem; }
+        #prism-code { background-color: #1a1a1a; color: #ffffff; border: none; padding: 10px; font-family: monospace; font-size: 14px; resize: none; flex-grow: 1; border-radius: 0.375rem; }
+        .gizmo-helper {
+            position: absolute; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.9);
+            padding: 8px 12px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            font-size: 0.9rem; color: #333; max-width: 300px; line-height: 1.4; z-index: 10;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app-container">
+        <!-- Top Bar (Blender-Style Tabs & Controls) -->
+        <div id="top-bar">
+            <h1 class="text-xl font-extrabold text-white mr-4">BLEM 2025 Prototype</h1>
+            <div id="mode-selector" class="flex space-x-2 blender-panel">
+                <button id="object-mode-btn" class="blender-button active" onclick="app.setMode('Object')">Object Mode</button>
+                <button id="edit-mode-btn" class="blender-button" onclick="app.setMode('Edit')">Edit Mode</button>
+            </div>
+            
+            <!-- Modeling: Transform Controls -->
+            <div id="transform-mode-selector" class="flex space-x-2 blender-panel ml-4">
+                <button class="blender-button" title="Translate (G)" onclick="app.setTransformMode('translate')">Move</button>
+                <button class="blender-button" title="Rotate (R)" onclick="app.setTransformMode('rotate')">Rotate</button>
+                <button class="blender-button" title="Scale (S)" onclick="app.setTransformMode('scale')">Scale</button>
+            </div>
+
+            <!-- Modeling: Visuals -->
+            <div id="visuals-selector" class="flex space-x-2 blender-panel ml-4">
+                <button id="wireframe-btn" class="blender-button" onclick="app.toggleWireframe()">Wireframe</button>
+            </div>
+
+            <div class="flex space-x-2">
+                <button class="blender-button" onclick="document.getElementById('add-menu').classList.toggle('hidden')">Add Menu</button>
+                <div id="add-menu" class="absolute hidden bg-gray-700 p-2 rounded-lg mt-10 right-1/2 transform translate-x-1/2 z-50">
+                    <button class="block w-full text-left p-1 text-white hover:bg-gray-600 rounded" onclick="app.addObject('Cube')">Cube</button>
+                    <button class="block w-full text-left p-1 text-white hover:bg-gray-600 rounded" onclick="app.addObject('Sphere')">Sphere</button>
+                    <button class="block w-full text-left p-1 text-white hover:bg-gray-600 rounded" onclick="app.addObject('Plane')">Plane</button>
+                </div>
+                <button class="blender-button" onclick="app.saveScene()">Save Scene</button>
+                <div id="user-info" class="text-xs text-gray-400 p-2 rounded-md bg-gray-600">User ID: Loading...</div>
+            </div>
+        </div>
+
+        <!-- Main Workspace (Viewport & Editor) -->
+        <div id="viewport-editor-grid">
+            <div id="three-container">
+                <div id="gizmo-helper" class="gizmo-helper hidden">
+                    <strong class="text-lg">Gizmo Control Guide</strong>
+                    <p><strong>Object Mode:</strong> Use the Gizmo (colored axes/rings) to move, rotate, or scale the selected object.</p>
+                    <p><strong>Edit Mode:</strong> Use the Gizmo to move individual selected vertices.</p>
+                    <p>Click away from the object to deselect.</p>
+                </div>
+            </div>
+            <div id="code-editor-container" class="p-3">
+                <h2 class="text-white text-lg mb-2 font-semibold">Prism 1.0 Code Editor</h2>
+                <textarea id="prism-code" placeholder="Write your Prism 1.0 code here. Example:&#10;vertex(cube, 1, 0.5, 0.5, 0.5)&#10;move(cube, 2, 0, 0)&#10;pulse(cube, 0.2, 5.0) // Animation command (strength, speed)&#10;wireframe(cube, true) // Modeling visual command"></textarea>
+                <div class="mt-2 flex space-x-2">
+                    <button class="blender-button w-1/2" onclick="app.executePrismCode()">Execute Prism Code</button>
+                    <button class="blender-button w-1/2" onclick="app.requestCodeGeneration()">AI Code Assist (Generate/Explain)</button>
+                </div>
+                <h2 class="text-white text-lg mt-4 mb-1 font-semibold">Code Output / Log</h2>
+                <div id="code-output" class="text-sm">Ready.</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, query, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Set Firebase debug log level
+        setLogLevel('Debug');
+
+        // Global state object
+        const state = {
+            db: null,
+            auth: null,
+            userId: null,
+            isAuthReady: false,
+            scene: null,
+            camera: null,
+            renderer: null,
+            controls: null,
+            transformControls: null,
+            raycaster: new THREE.Raycaster(),
+            pointer: new THREE.Vector2(),
+            cubeMesh: null,
+            vertexVisualsGroup: null, // Group for all vertex meshes
+            vertexVisuals: [], // Array of THREE.Mesh objects for vertices
+            mode: 'Object', // 'Object' or 'Edit'
+            selectedObject: null,
+            selectedVertexIndex: -1,
+            sceneDataRef: null,
+            animationTime: 0,
+            animationProps: { pulse: { strength: 0, speed: 0 } }, // New: for Prism animations
+            isWireframe: false, // New: for wireframe state
+        };
+
+        const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const FIREBASE_CONFIG = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const INITIAL_AUTH_TOKEN = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        const API_KEY = ""; // Placeholder for Gemini API key
+
+        // Utility function for exponential backoff on API calls
+        async function fetchWithRetry(url, options, maxRetries = 5) {
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(url, options);
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return response;
+                } catch (error) {
+                    console.error(`Attempt ${i + 1} failed:`, error);
+                    if (i === maxRetries - 1) throw error;
+                    const delay = Math.pow(2, i) * 1000 + Math.random() * 1000;
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                }
+            }
+        }
+
+        // --- CORE FIREBASE/AUTH SETUP ---
+        async function setupFirebase() {
+            try {
+                const app = initializeApp(FIREBASE_CONFIG);
+                state.db = getFirestore(app);
+                state.auth = getAuth(app);
+
+                // Authenticate
+                if (INITIAL_AUTH_TOKEN) {
+                    await signInWithCustomToken(state.auth, INITIAL_AUTH_TOKEN);
+                } else {
+                    await signInAnonymously(state.auth);
+                }
+
+                // Listen for Auth State Changes
+                onAuthStateChanged(state.auth, (user) => {
+                    if (user) {
+                        state.userId = user.uid;
+                        document.getElementById('user-info').textContent = `User ID: ${state.userId}`;
+                        state.isAuthReady = true;
+                        state.sceneDataRef = doc(state.db, `artifacts/${APP_ID}/public/data/scenes`, state.userId);
+                        loadScene();
+                    } else {
+                        // Use a random UUID for anonymous/unauthenticated users
+                        state.userId = localStorage.getItem('anonUserId') || crypto.randomUUID();
+                        localStorage.setItem('anonUserId', state.userId);
+                        document.getElementById('user-info').textContent = `User ID: ${state.userId.substring(0, 8)}... (Anon)`;
+                        state.isAuthReady = true;
+                        state.sceneDataRef = doc(state.db, `artifacts/${APP_ID}/public/data/scenes`, state.userId);
+                        // If no user, load default scene structure
+                        loadScene();
+                    }
+                });
+            } catch (e) {
+                console.error("Firebase setup failed:", e);
+                document.getElementById('code-output').textContent += `\nError: Firebase setup failed. ${e.message}`;
+            }
+        }
+
+        // --- THREE.JS SCENE SETUP ---
+        function initThree() {
+            const container = document.getElementById('three-container');
+
+            // 1. Scene setup (Blender-style gray background)
+            state.scene = new THREE.Scene();
+            state.scene.background = new THREE.Color(0x333333);
+
+            // 2. Camera setup
+            state.camera = new THREE.PerspectiveCamera(75, container.clientWidth / container.clientHeight, 0.1, 1000);
+            state.camera.position.set(5, 5, 5);
+
+            // 3. Renderer setup
+            state.renderer = new THREE.WebGLRenderer({ antialias: true });
+            state.renderer.setPixelRatio(window.devicePixelRatio);
+            state.renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(state.renderer.domElement);
+
+            // 4. Lighting
+            const ambientLight = new THREE.AmbientLight(0x606060);
+            state.scene.add(ambientLight);
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(10, 10, 10);
+            state.scene.add(directionalLight);
+
+            // 5. Grid/Ground Plane
+            const gridHelper = new THREE.GridHelper(10, 10, 0x555555, 0x555555);
+            state.scene.add(gridHelper);
+
+            // 6. Orbit Controls (Camera Movement)
+            state.controls = new THREE.OrbitControls(state.camera, state.renderer.domElement);
+            state.controls.update();
+
+            // 7. Transform Controls (Gizmo)
+            state.transformControls = new THREE.TransformControls(state.camera, state.renderer.domElement);
+            state.scene.add(state.transformControls);
+            state.transformControls.addEventListener('dragging-changed', (event) => {
+                state.controls.enabled = !event.value;
+            });
+            state.transformControls.addEventListener('change', () => {
+                if (state.mode === 'Edit' && state.selectedVertexIndex !== -1) {
+                    updateVertexGeometryFromGizmo();
+                }
+            });
+            state.transformControls.addEventListener('objectChange', saveSceneDebounced);
+            
+            // Gizmo initially hidden until an object is selected
+            state.transformControls.visible = false;
+
+            // 8. Event Listeners
+            window.addEventListener('resize', onWindowResize, false);
+            window.addEventListener('pointerdown', onPointerDown, false);
+
+            // Initialize Group for vertex visuals
+            state.vertexVisualsGroup = new THREE.Group();
+            state.scene.add(state.vertexVisualsGroup);
+
+            // Add initial Cube
+            addObject('Cube');
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('three-container');
+            state.camera.aspect = container.clientWidth / container.clientHeight;
+            state.camera.updateProjectionMatrix();
+            state.renderer.setSize(container.clientWidth, container.clientHeight);
+        }
+
+        // --- OBJECT & VERTEX MANIPULATION ---
+
+        function createGeometry(type) {
+            switch(type) {
+                case 'Cube':
+                    return new THREE.BoxGeometry(2, 2, 2);
+                case 'Sphere':
+                    return new THREE.SphereGeometry(1.5, 32, 32);
+                case 'Plane':
+                    return new THREE.PlaneGeometry(5, 5, 1, 1); // Low subdivision for simpler vertex editing
+                default:
+                    return new THREE.BoxGeometry(2, 2, 2);
+            }
+        }
+
+        function addObject(type, data = null) {
+            // Remove existing cube before adding a new one (ensures only one object for now)
+            if(state.cubeMesh) {
+                state.scene.remove(state.cubeMesh);
+                state.cubeMesh.geometry.dispose();
+                state.cubeMesh.material.dispose();
+                state.cubeMesh = null;
+                state.vertexVisualsGroup.clear();
+                state.vertexVisuals = [];
+            }
+
+            const geometry = createGeometry(type);
+            
+            // Use current wireframe state from global state
+            const material = new THREE.MeshPhongMaterial({
+                color: 0xcccccc,
+                flatShading: true,
+                wireframe: state.isWireframe, 
+                vertexColors: false
+            });
+
+            state.cubeMesh = new THREE.Mesh(geometry, material);
+            state.cubeMesh.name = 'cube';
+            state.scene.add(state.cubeMesh);
+            state.cubeMesh.userData.isEditable = true; // Flag for raycasting/selection
+
+            if (data) {
+                state.cubeMesh.position.set(data.position[0], data.position[1], data.position[2]);
+                state.cubeMesh.rotation.set(data.rotation[0], data.rotation[1], data.rotation[2]);
+                
+                // Load visual and animation properties
+                if (typeof data.isWireframe === 'boolean') {
+                    state.isWireframe = data.isWireframe;
+                    state.cubeMesh.material.wireframe = state.isWireframe;
+                    document.getElementById('wireframe-btn').classList.toggle('active', state.isWireframe);
+                }
+                if (data.animationProps) {
+                    state.animationProps = data.animationProps;
+                }
+                
+                // Update vertices if they exist in data
+                if (data.vertices && data.vertices.length === geometry.getAttribute('position').count) {
+                    const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+                    for (let i = 0; i < data.vertices.length; i++) {
+                        positionAttribute.setX(i, data.vertices[i].x);
+                        positionAttribute.setY(i, data.vertices[i].y);
+                        positionAttribute.setZ(i, data.vertices[i].z);
+                    }
+                    positionAttribute.needsUpdate = true;
+                    state.cubeMesh.geometry.computeVertexNormals();
+                }
+            }
+
+            setupVertexVisuals();
+            updateVertexMesh(false); // Hide visuals initially
+            selectObject(state.cubeMesh);
+        }
+
+        function setupVertexVisuals() {
+            if (!state.cubeMesh) return;
+
+            state.vertexVisuals = [];
+            state.vertexVisualsGroup.clear(); // Clear existing
+            
+            const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+            const verticesArray = positionAttribute.array;
+            const vertexCount = positionAttribute.count;
+
+            for (let i = 0; i < vertexCount; i++) {
+                // Access coordinates directly from the array
+                const x = verticesArray[i * 3];
+                const y = verticesArray[i * 3 + 1];
+                const z = verticesArray[i * 3 + 2];
+
+                const vertexGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+                const vertexMaterial = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const vertexVisual = new THREE.Mesh(vertexGeometry, vertexMaterial);
+
+                // Position relative to the cube's local space
+                vertexVisual.position.set(x, y, z);
+
+                vertexVisual.name = `vertex_${i}`;
+                vertexVisual.userData.vertexIndex = i;
+                vertexVisual.userData.isVertex = true;
+                vertexVisual.visible = false; // Initially hidden
+
+                state.vertexVisuals.push(vertexVisual);
+                state.vertexVisualsGroup.add(vertexVisual);
+            }
+            // Ensure vertex group transformation is synced on setup
+            state.vertexVisualsGroup.rotation.copy(state.cubeMesh.rotation);
+            state.vertexVisualsGroup.position.copy(state.cubeMesh.position);
+            state.vertexVisualsGroup.scale.copy(state.cubeMesh.scale);
+        }
+
+        /**
+         * @function updateVertexMesh
+         * Updates the position and visibility of the vertex spheres based on the cube's current geometry.
+         * @param {boolean} show - Whether to show the vertex spheres.
+         */
+        function updateVertexMesh(show) {
+            if (!state.cubeMesh || !state.vertexVisualsGroup) return;
+
+            const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+            const verticesArray = positionAttribute.array;
+
+            state.vertexVisualsGroup.visible = show;
+            state.transformControls.showScale = show ? false : state.transformControls.mode === 'scale';
+            state.transformControls.showRotate = show ? false : state.transformControls.mode === 'rotate';
+            state.transformControls.showTranslate = true; // Always show translate, but only when gizmo is attached
+
+            for (let i = 0; i < positionAttribute.count; i++) {
+                const vertexVisual = state.vertexVisuals[i];
+
+                if (vertexVisual) {
+                    // Access coordinates directly from the array
+                    const x = verticesArray[i * 3];
+                    const y = verticesArray[i * 3 + 1];
+                    const z = verticesArray[i * 3 + 2];
+                    
+                    // Update vertex visual position from cube geometry's local space
+                    vertexVisual.position.set(x, y, z);
+                    vertexVisual.material.color.set(i === state.selectedVertexIndex ? 0x00ff00 : 0xff0000);
+                    vertexVisual.visible = show; // Crucial visibility setting
+                }
+            }
+
+            // Sync vertex group transformation with the main cube mesh
+            state.vertexVisualsGroup.rotation.copy(state.cubeMesh.rotation);
+            state.vertexVisualsGroup.position.copy(state.cubeMesh.position);
+            state.vertexVisualsGroup.scale.copy(state.cubeMesh.scale);
+
+            state.cubeMesh.geometry.attributes.position.needsUpdate = true;
+            state.cubeMesh.geometry.computeVertexNormals();
+        }
+
+        function updateVertexGeometryFromGizmo() {
+            if (state.mode !== 'Edit' || state.selectedVertexIndex === -1 || !state.cubeMesh) return;
+
+            const gizmoTarget = state.transformControls.object;
+            if (!gizmoTarget || !gizmoTarget.userData.isVertex) return;
+
+            const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+
+            // Get the new local position of the vertex visual (which is being moved by the Gizmo)
+            const newLocalPos = gizmoTarget.position;
+
+            // Update the cube's geometry attribute
+            positionAttribute.setXYZ(
+                state.selectedVertexIndex,
+                newLocalPos.x,
+                newLocalPos.y,
+                newLocalPos.z
+            );
+
+            // Signal Three.js to update the geometry
+            positionAttribute.needsUpdate = true;
+            state.cubeMesh.geometry.computeVertexNormals();
+
+            // Debounced save
+            saveSceneDebounced();
+        }
+
+
+        // --- MODE MANAGEMENT ---
+
+        window.app = {
+            setMode: function (newMode) {
+                if (state.mode === newMode) return;
+                state.mode = newMode;
+
+                document.getElementById('object-mode-btn').classList.toggle('active', newMode === 'Object');
+                document.getElementById('edit-mode-btn').classList.toggle('active', newMode === 'Edit');
+
+                if (!state.selectedObject) {
+                    state.transformControls.detach();
+                    state.transformControls.visible = false;
+                    updateVertexMesh(false);
+                    return;
+                }
+
+                if (newMode === 'Edit') {
+                    // Enter Edit Mode: Hide Gizmo for Object, Show Vertex Visuals
+                    state.transformControls.detach();
+                    state.transformControls.visible = false;
+                    updateVertexMesh(true);
+                    state.selectedVertexIndex = -1; // Deselect vertex
+                } else {
+                    // Enter Object Mode: Show Gizmo for Object, Hide Vertex Visuals
+                    state.transformControls.attach(state.selectedObject);
+                    state.transformControls.visible = true;
+                    // Reset to translate in Object Mode
+                    state.transformControls.setMode('translate'); 
+                    updateVertexMesh(false);
+                    state.selectedVertexIndex = -1; // Deselect vertex
+                }
+                document.getElementById('gizmo-helper').classList.remove('hidden'); // Show tutorial helper
+                setTimeout(() => document.getElementById('gizmo-helper').classList.add('hidden'), 5000);
+            },
+            
+            setTransformMode: function(mode) {
+                if (state.mode === 'Object' && state.transformControls.object) {
+                    state.transformControls.setMode(mode);
+                } else if (state.mode === 'Edit' && state.transformControls.object && state.transformControls.object.userData.isVertex) {
+                    // Only allow translate for vertices (modeling movement)
+                    state.transformControls.setMode('translate');
+                }
+            },
+
+            toggleWireframe: function(newState = null) {
+                const targetState = newState !== null ? newState : !state.isWireframe;
+                if (state.isWireframe === targetState) return;
+
+                state.isWireframe = targetState;
+                document.getElementById('wireframe-btn').classList.toggle('active', state.isWireframe);
+
+                if (state.cubeMesh) {
+                    // Dispose old material to prevent memory leaks
+                    if (state.cubeMesh.material) state.cubeMesh.material.dispose();
+                    
+                    // Create a new material reflecting the wireframe state
+                    const newMaterial = new THREE.MeshPhongMaterial({
+                        color: 0xcccccc,
+                        flatShading: true,
+                        wireframe: state.isWireframe
+                    });
+                    state.cubeMesh.material = newMaterial;
+                    saveSceneDebounced();
+                }
+            },
+            
+            addObject,
+            saveScene: saveScene,
+            executePrismCode: executePrismCode,
+            requestCodeGeneration: requestCodeGeneration
+        };
+
+        function selectObject(object) {
+            state.selectedObject = object;
+            if (object) {
+                if (state.mode === 'Object') {
+                    state.transformControls.attach(object);
+                    state.transformControls.visible = true;
+                } else {
+                    state.transformControls.detach();
+                    state.transformControls.visible = false;
+                }
+            } else {
+                state.transformControls.detach();
+                state.transformControls.visible = false;
+            }
+            state.selectedVertexIndex = -1;
+            updateVertexMesh(state.mode === 'Edit');
+        }
+
+        function selectVertex(index) {
+            if (state.mode !== 'Edit' || !state.cubeMesh) return;
+
+            if (index === -1) {
+                state.selectedVertexIndex = -1;
+                state.transformControls.detach();
+                state.transformControls.visible = false;
+            } else {
+                state.selectedVertexIndex = index;
+                const vertexVisual = state.vertexVisuals[index];
+                if (vertexVisual) {
+                    state.transformControls.attach(vertexVisual);
+                    state.transformControls.visible = true;
+                    state.transformControls.setMode('translate'); // Only translate in Edit Mode
+                }
+            }
+            updateVertexMesh(true); // Re-render to update color
+        }
+
+
+        // --- INTERACTION / RAYCASTING ---
+
+        function onPointerDown(event) {
+            if (!state.renderer) return;
+
+            const container = document.getElementById('three-container');
+            const rect = container.getBoundingClientRect();
+            
+            // Normalize pointer coordinates
+            state.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            state.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+            if (state.transformControls.dragging) return;
+
+            state.raycaster.setFromCamera(state.pointer, state.camera);
+
+            if (state.mode === 'Edit') {
+                // Check for vertex selection
+                if (!state.vertexVisualsGroup.visible) return;
+
+                const intersects = state.raycaster.intersectObjects(state.vertexVisuals);
+                if (intersects.length > 0) {
+                    const intersectedVertex = intersects[0].object;
+                    selectVertex(intersectedVertex.userData.vertexIndex);
+                } else {
+                    selectVertex(-1); // Deselect vertex
+                }
+            } else { // Object Mode
+                // Check for object selection
+                const intersects = state.raycaster.intersectObjects(state.scene.children.filter(c => c.userData.isEditable));
+                if (intersects.length > 0) {
+                    selectObject(intersects[0].object);
+                } else {
+                    selectObject(null); // Deselect object
+                }
+            }
+        }
+
+
+        // --- PRISM CODE EXECUTION (Local) ---
+
+        function executePrismCode() {
+            const code = document.getElementById('prism-code').value;
+            const output = document.getElementById('code-output');
+            output.textContent = "Executing Prism Code...\n";
+
+            // Reset animation properties before execution
+            state.animationProps = { pulse: { strength: 0, speed: 0 } };
+
+            try {
+                // Simple parsing for demo (real Prism would be more robust)
+                const lines = code.split('\n').filter(line => line.trim() !== '');
+
+                lines.forEach(line => {
+                    const matchMove = line.match(/^move\((\w+),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)$/);
+                    const matchVertex = line.match(/^vertex\((\w+),\s*(\d+),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)$/);
+                    const matchRotate = line.match(/^rotate\((\w+),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)$/);
+                    const matchPulse = line.match(/^pulse\((\w+),\s*(-?\d+\.?\d*),\s*(-?\d+\.?\d*)\)$/); // NEW: Pulse animation
+                    const matchWireframe = line.match(/^wireframe\((\w+),\s*(true|false)\)$/); // NEW: Wireframe toggle
+
+                    if (matchMove) {
+                        const [, objectName, x, y, z] = matchMove;
+                        if (objectName === 'cube' && state.cubeMesh) {
+                            state.cubeMesh.position.set(parseFloat(x), parseFloat(y), parseFloat(z));
+                            output.textContent += `[Success] Moved ${objectName} to (${x}, ${y}, ${z})\n`;
+                            saveSceneDebounced();
+                        } else {
+                            output.textContent += `[Error] Object '${objectName}' not found.\n`;
+                        }
+                    } else if (matchVertex) {
+                        const [, objectName, index, x, y, z] = matchVertex;
+                        if (objectName === 'cube' && state.cubeMesh) {
+                            const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+                            const idx = parseInt(index);
+                            if (idx >= 0 && idx < positionAttribute.count) {
+                                positionAttribute.setXYZ(idx, parseFloat(x), parseFloat(y), parseFloat(z));
+                                positionAttribute.needsUpdate = true;
+                                state.cubeMesh.geometry.computeVertexNormals();
+                                setupVertexVisuals(); // Re-setup visuals to match new vertex count/positions if geometry changed
+                                updateVertexMesh(state.mode === 'Edit'); // Update visuals
+                                output.textContent += `[Success] Vertex ${idx} of ${objectName} set to (${x}, ${y}, ${z})\n`;
+                                saveSceneDebounced();
+                            } else {
+                                output.textContent += `[Error] Vertex index ${idx} out of bounds (0-${positionAttribute.count - 1}).\n`;
+                            }
+                        } else {
+                            output.textContent += `[Error] Object '${objectName}' not found or invalid.\n`;
+                        }
+                    } else if (matchRotate) {
+                        const [, objectName, x, y, z] = matchRotate;
+                        if (objectName === 'cube' && state.cubeMesh) {
+                            state.cubeMesh.rotation.set(parseFloat(x), parseFloat(y), parseFloat(z));
+                            output.textContent += `[Success] Rotated ${objectName} to (${x}, ${y}, ${z}) radians\n`;
+                            saveSceneDebounced();
+                        } else {
+                            output.textContent += `[Error] Object '${objectName}' not found.\n`;
+                        }
+                    } else if (matchPulse) { // NEW: Pulse animation
+                        const [, objectName, strength, speed] = matchPulse;
+                        if (objectName === 'cube' && state.cubeMesh) {
+                            state.animationProps.pulse.strength = parseFloat(strength);
+                            state.animationProps.pulse.speed = parseFloat(speed);
+                            output.textContent += `[Success] Applied pulse animation to ${objectName} (Strength: ${strength}, Speed: ${speed})\n`;
+                            saveSceneDebounced();
+                        } else {
+                            output.textContent += `[Error] Object '${objectName}' not found.\n`;
+                        }
+                    } else if (matchWireframe) { // NEW: Wireframe toggle
+                        const [, objectName, wireframeState] = matchWireframe;
+                        if (objectName === 'cube' && state.cubeMesh) {
+                            const isWireframe = wireframeState === 'true';
+                            app.toggleWireframe(isWireframe);
+                            output.textContent += `[Success] Set wireframe state of ${objectName} to ${wireframeState}.\n`;
+                        } else {
+                            output.textContent += `[Error] Object '${objectName}' not found.\n`;
+                        }
+                    }
+                    else if (line.trim().startsWith('//') || line.trim() === '') {
+                        // Ignore comments and empty lines
+                    } else {
+                        output.textContent += `[Error] Unknown Prism command: ${line}\n`;
+                    }
+                });
+                output.textContent += "Prism Execution Complete.\n";
+            } catch (e) {
+                output.textContent += `[CRITICAL ERROR] Failed to execute code: ${e.message}\n`;
+                console.error("Prism Execution Error:", e);
+            }
+        }
+
+        // --- GEMINI API CALL FOR CODE GENERATION ---
+
+        async function requestCodeGeneration() {
+            const output = document.getElementById('code-output');
+            output.textContent = "Requesting AI code generation... (This may take a moment)\n";
+
+            const currentCode = document.getElementById('prism-code').value;
+            const userPrompt = prompt("Enter your request for Prism code (e.g., 'Make the cube pulsate slowly' or 'Apply a green wireframe shader').");
+
+            if (!userPrompt) {
+                output.textContent += "Code generation cancelled.\n";
+                return;
+            }
+
+            const systemPrompt = `You are the AI assistant for the BLEM 3D software's Prism 1.0 Code Editor. Your task is to generate valid Prism 1.0 code snippets based on user requests. Prism 1.0 has functions: create(type), move(object, x, y, z), vertex(object, index, x, y, z), rotate(object, x, y, z), pulse(object, strength, speed), and wireframe(object, true|false). Use the existing state: 'cube' is the only object available. Always provide only the Prism code, do not add explanations or surrounding text.`;
+
+            const query = `Current Code:\n${currentCode}\n\nUser Request: ${userPrompt}`;
+
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${API_KEY}`;
+            const payload = {
+                contents: [{ parts: [{ text: query }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+            };
+
+            try {
+                const response = await fetchWithRetry(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text.trim() || "No code generated.";
+
+                document.getElementById('prism-code').value += `\n\n// AI generated code for: ${userPrompt}\n${generatedText}`;
+                output.textContent += "AI code added to editor. Click 'Execute Prism Code' to run it.\n";
+
+            } catch (error) {
+                output.textContent += `[API Error] Failed to generate code. Check console for details.\n`;
+                console.error("Gemini API Error:", error);
+            }
+        }
+
+
+        // --- FIRESTORE PERSISTENCE ---
+
+        function getSceneData() {
+            if (!state.cubeMesh) return null;
+
+            const positionAttribute = state.cubeMesh.geometry.getAttribute('position');
+            const vertices = [];
+            const verticesArray = positionAttribute.array;
+
+            for (let i = 0; i < positionAttribute.count; i++) {
+                // Access coordinates directly from the array
+                vertices.push({ 
+                    x: verticesArray[i * 3],
+                    y: verticesArray[i * 3 + 1],
+                    z: verticesArray[i * 3 + 2]
+                });
+            }
+
+            return {
+                objectName: state.cubeMesh.name,
+                position: state.cubeMesh.position.toArray(),
+                rotation: state.cubeMesh.rotation.toArray(),
+                vertices: vertices,
+                isWireframe: state.isWireframe, // NEW
+                animationProps: state.animationProps // NEW
+            };
+        }
+
+        async function saveScene() {
+            if (!state.isAuthReady || !state.sceneDataRef) {
+                console.warn("Auth not ready or scene ref missing. Cannot save.");
+                return;
+            }
+
+            const data = getSceneData();
+            if (!data) return;
+
+            try {
+                await setDoc(state.sceneDataRef, { cube: data });
+                document.getElementById('code-output').textContent += "\n[System] Scene saved to Firestore.";
+            } catch (e) {
+                console.error("Error saving document: ", e);
+                document.getElementById('code-output').textContent += `\n[System Error] Failed to save scene. ${e.message}`;
+            }
+        }
+
+        // Simple debounce utility
+        let saveTimer;
+        function saveSceneDebounced() {
+            clearTimeout(saveTimer);
+            saveTimer = setTimeout(saveScene, 500); // Wait 500ms after last change to save
+        }
+
+
+        async function loadScene() {
+            if (!state.isAuthReady || !state.sceneDataRef) return;
+
+            try {
+                const docSnap = await getDoc(state.sceneDataRef);
+                if (docSnap.exists() && docSnap.data().cube) {
+                    const data = docSnap.data().cube;
+                    
+                    // Call addObject with the loaded data
+                    addObject('Cube', data);
+                    
+                    document.getElementById('code-output').textContent += "\n[System] Scene loaded from Firestore.";
+
+                } else {
+                    document.getElementById('code-output').textContent += "\n[System] No saved scene found. Using default cube.";
+                    // Ensure a default cube is added if none exists (important for initial load)
+                    if (!state.cubeMesh) {
+                         addObject('Cube');
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading document: ", e);
+                document.getElementById('code-output').textContent += `\n[System Error] Failed to load scene. ${e.message}`;
+            }
+        }
+
+
+        // --- ANIMATION AND RENDER LOOP ---
+
+        function animate(time) {
+            requestAnimationFrame(animate);
+            state.animationTime = time * 0.001; // Convert to seconds
+
+            // Simple Object Mode Animation (Modeling/Animation logic)
+            if (state.mode === 'Object' && state.cubeMesh) {
+                const pulse = state.animationProps.pulse;
+
+                if (pulse.strength > 0 && pulse.speed !== 0) {
+                    // Prism Pulse Animation is active
+                    const scale = 1 + Math.sin(state.animationTime * pulse.speed) * pulse.strength;
+                    state.cubeMesh.scale.set(scale, scale, scale);
+                    // Apply a subtle, non-saving rotation for continuous visual feedback if desired,
+                    // but keeping it simple by just pulsing for now.
+                } else {
+                    // Default subtle, non-saving rotation
+                    state.cubeMesh.rotation.y = Math.sin(state.animationTime * 0.2) * 0.5;
+                    state.cubeMesh.scale.set(1, 1, 1); // Ensure scale is 1 if pulse is off
+                }
+            }
+
+            // Simple Edit Mode Animation (Vertex Pulsate)
+            if (state.mode === 'Edit' && state.selectedVertexIndex !== -1) {
+                const visual = state.vertexVisuals[state.selectedVertexIndex];
+                if(visual) {
+                    const scaleFactor = 1 + Math.sin(state.animationTime * 5) * 0.1;
+                    visual.scale.set(scaleFactor, scaleFactor, scaleFactor);
+                }
+            }
+
+            state.controls.update(); 
+            state.renderer.render(state.scene, state.camera);
+        }
+
+        // --- INITIALIZATION ON LOAD ---
+        window.onload = function () {
+            initThree();
+            animate();
+            setupFirebase();
+        };
+
+    </script>
+</body>
+</html>
+
