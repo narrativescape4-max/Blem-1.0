@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BLEM 3D Concept Simulator</title>
+    <title>Blem — Blender + Scratch</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -11,23 +11,63 @@
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
         body { font-family: 'Inter', sans-serif; background-color: #333333; margin: 0; overflow: hidden; }
-        #app-container { display: grid; grid-template-rows: auto 1fr; height: 100vh; }
-        #top-bar { background-color: #444444; padding: 0.5rem 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: space-between; }
+        #app-container { display: grid; grid-template-rows: auto auto 1fr; height: 100vh; }
+        #top-bar { background-color: #444444; padding: 0.75rem 1rem; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: flex-start; gap: 0.5rem; flex-wrap: wrap; }
         .blender-panel { background-color: #2c2c2c; border-radius: 0.375rem; box-shadow: inset 0 0 5px rgba(0, 0, 0, 0.3); padding: 0.5rem; }
         .blender-button { background-color: #555555; color: #ffffff; padding: 0.5rem 1rem; border-radius: 0.375rem; font-weight: 600; transition: background-color 0.15s; cursor: pointer; border: 1px solid #666666; }
         .blender-button:hover { background-color: #6a6a6a; }
         .blender-button.active { background-color: #007bff; border-color: #007bff; }
-        #viewport-editor-grid { display: grid; grid-template-columns: 2fr 1fr; height: calc(100vh - 56px); }
+        #viewport-editor-grid { display: grid; grid-template-columns: 2fr 1fr; height: 100%; min-height: 0; }
         #three-container { position: relative; background-color: #1a1a1a; }
         canvas { display: block; filter: saturate(1.2) contrast(1.1); /* Aesthetic filter */ }
         #code-editor-container { overflow-y: auto; display: flex; flex-direction: column; }
-        #code-output { background-color: #111111; color: #00ff00; height: 150px; overflow-y: scroll; padding: 10px; font-family: monospace; border-radius: 0.375rem; margin-top: 0.5rem; }
+        #code-output { background-color: #111111; color: #00ff00; height: 150px; overflow-y: scroll; padding: 10px; font-family: monospace; border-radius: 0.375rem; margin-top: 0.5rem; white-space: pre-wrap; }
         #prism-code { background-color: #1a1a1a; color: #ffffff; border: none; padding: 10px; font-family: monospace; font-size: 14px; resize: none; flex-grow: 1; border-radius: 0.375rem; }
+        #prism-code { display: none; }
+        .block-list { background: #161616; border: 1px solid #3f3f46; border-radius: 0.5rem; min-height: 120px; max-height: 220px; overflow-y: auto; padding: 0.5rem; }
+        .scratch-block { background: #f59e0b; color: #111827; border-radius: 999px; padding: 0.4rem 0.75rem; font-weight: 700; font-size: 0.82rem; margin-bottom: 0.45rem; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; }
+        .scratch-block:nth-child(odd) { background: #38bdf8; }
+        .block-mini-btn { background: rgba(17,24,39,0.2); border: 1px solid rgba(17,24,39,0.35); color: #111827; border-radius: 999px; padding: 0.1rem 0.45rem; font-size: 0.72rem; cursor: pointer; }
+        #block-builder select, #block-builder input { background: #1f2937; color: #e5e7eb; border: 1px solid #4b5563; border-radius: 0.375rem; padding: 0.35rem 0.5rem; font-size: 0.82rem; }
         .gizmo-helper {
             position: absolute; top: 10px; left: 10px; background: rgba(255, 255, 255, 0.9);
             padding: 8px 12px; border-radius: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
             font-size: 0.9rem; color: #333; max-width: 300px; line-height: 1.4; z-index: 10;
             border: 1px solid #ddd;
+        }
+        #blem-intro {
+            background: linear-gradient(90deg, #0f172a, #1e293b);
+            color: #e2e8f0;
+            padding: 0.6rem 1rem;
+            font-size: 0.95rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        #blem-intro strong {
+            color: #93c5fd;
+        }
+        #top-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        @media (max-width: 1024px) {
+            body { overflow: auto; }
+            #app-container { height: auto; min-height: 100vh; }
+            #viewport-editor-grid { grid-template-columns: 1fr; grid-template-rows: minmax(45vh, 1fr) auto; }
+            #code-editor-container { max-height: 45vh; }
+            #top-bar h1 { width: 100%; }
+        }
+
+        @media (max-width: 640px) {
+            #top-bar { padding: 0.6rem; }
+            .blender-button { padding: 0.45rem 0.7rem; font-size: 0.84rem; }
+            .blender-panel { width: 100%; }
+            #mode-selector, #transform-mode-selector, #visuals-selector { overflow-x: auto; }
+            #top-actions { width: 100%; }
+            #user-info { width: 100%; }
+            #blem-intro { font-size: 0.85rem; }
         }
     </style>
 </head>
@@ -36,7 +76,7 @@
     <div id="app-container">
         <!-- Top Bar (Blender-Style Tabs & Controls) -->
         <div id="top-bar">
-            <h1 class="text-xl font-extrabold text-white mr-4">BLEM 2025 Prototype</h1>
+            <h1 class="text-xl font-extrabold text-white mr-4">Blem — Blender + Scratch</h1>
             <div id="mode-selector" class="flex space-x-2 blender-panel">
                 <button id="object-mode-btn" class="blender-button active" onclick="app.setMode('Object')">Object Mode</button>
                 <button id="edit-mode-btn" class="blender-button" onclick="app.setMode('Edit')">Edit Mode</button>
@@ -54,7 +94,7 @@
                 <button id="wireframe-btn" class="blender-button" onclick="app.toggleWireframe()">Wireframe</button>
             </div>
 
-            <div class="flex space-x-2">
+            <div id="top-actions">
                 <button class="blender-button" onclick="document.getElementById('add-menu').classList.toggle('hidden')">Add Menu</button>
                 <div id="add-menu" class="absolute hidden bg-gray-700 p-2 rounded-lg mt-10 right-1/2 transform translate-x-1/2 z-50">
                     <button class="block w-full text-left p-1 text-white hover:bg-gray-600 rounded" onclick="app.addObject('Cube')">Cube</button>
@@ -64,6 +104,10 @@
                 <button class="blender-button" onclick="app.saveScene()">Save Scene</button>
                 <div id="user-info" class="text-xs text-gray-400 p-2 rounded-md bg-gray-600">User ID: Loading...</div>
             </div>
+        </div>
+
+        <div id="blem-intro">
+            <strong>Blem</strong> is a beginner-friendly 3D playground: the modeling feel of <strong>Blender</strong> with the coding simplicity of <strong>Scratch</strong>. Build on desktop, tweak on mobile, and learn by experimenting.
         </div>
 
         <!-- Main Workspace (Viewport & Editor) -->
@@ -77,11 +121,29 @@
                 </div>
             </div>
             <div id="code-editor-container" class="p-3">
-                <h2 class="text-white text-lg mb-2 font-semibold">Prism 1.0 Code Editor</h2>
-                <textarea id="prism-code" placeholder="Write your Prism 1.0 code here. Example:&#10;vertex(cube, 1, 0.5, 0.5, 0.5)&#10;move(cube, 2, 0, 0)&#10;pulse(cube, 0.2, 5.0) // Animation command (strength, speed)&#10;wireframe(cube, true) // Modeling visual command"></textarea>
+                <h2 class="text-white text-lg mb-2 font-semibold">Scratch-Style Block Studio</h2>
+                <p class="text-gray-300 text-sm mb-2">Stack blocks, then run them. This controls the selected object like Scratch.</p>
+                <div id="block-builder" class="grid grid-cols-2 gap-2 mb-2">
+                    <select id="block-type">
+                        <option value="move">Move</option>
+                        <option value="rotate">Rotate</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="wireframe">Wireframe</option>
+                    </select>
+                    <div class="flex gap-2">
+                        <input id="block-a" type="number" step="0.1" placeholder="A" value="1">
+                        <input id="block-b" type="number" step="0.1" placeholder="B" value="0">
+                        <input id="block-c" type="number" step="0.1" placeholder="C" value="0">
+                    </div>
+                </div>
+                <div class="flex space-x-2 mb-2">
+                    <button class="blender-button w-1/2" onclick="app.addBlockFromUI()">Add Block</button>
+                    <button class="blender-button w-1/2" onclick="app.clearBlocks()">Clear Blocks</button>
+                </div>
+                <div id="block-sequence" class="block-list"></div>
+                <textarea id="prism-code"></textarea>
                 <div class="mt-2 flex space-x-2">
-                    <button class="blender-button w-1/2" onclick="app.executePrismCode()">Execute Prism Code</button>
-                    <button class="blender-button w-1/2" onclick="app.requestCodeGeneration()">AI Code Assist (Generate/Explain)</button>
+                    <button class="blender-button w-full" onclick="app.executeBlockProgram()">Run Blocks</button>
                 </div>
                 <h2 class="text-white text-lg mt-4 mb-1 font-semibold">Code Output / Log</h2>
                 <div id="code-output" class="text-sm">Ready.</div>
@@ -122,12 +184,16 @@
             animationTime: 0,
             animationProps: { pulse: { strength: 0, speed: 0 } }, // New: for Prism animations
             isWireframe: false, // New: for wireframe state
+            persistenceMode: 'local', // 'firestore' or 'local'
+            localSceneKey: null,
+            blockProgram: []
         };
 
         const APP_ID = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const FIREBASE_CONFIG = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
         const INITIAL_AUTH_TOKEN = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         const API_KEY = ""; // Placeholder for Gemini API key
+        state.localSceneKey = `blem-local-scene-${APP_ID}`;
 
         // Utility function for exponential backoff on API calls
         async function fetchWithRetry(url, options, maxRetries = 5) {
@@ -148,11 +214,29 @@
         }
 
         // --- CORE FIREBASE/AUTH SETUP ---
+        function setupLocalPersistence(reason = 'Cloud sync unavailable.') {
+            state.persistenceMode = 'local';
+            state.isAuthReady = true;
+            state.userId = localStorage.getItem('anonUserId') || crypto.randomUUID();
+            localStorage.setItem('anonUserId', state.userId);
+            document.getElementById('user-info').textContent = `User ID: ${state.userId.substring(0, 8)}... (Local)`;
+            document.getElementById('code-output').textContent += `
+[System] ${reason} Using local storage mode.`;
+            loadScene();
+        }
+
         async function setupFirebase() {
             try {
+                const hasFirebaseConfig = FIREBASE_CONFIG && typeof FIREBASE_CONFIG === 'object' && FIREBASE_CONFIG.projectId;
+                if (!hasFirebaseConfig) {
+                    setupLocalPersistence('Firebase config not found.');
+                    return;
+                }
+
                 const app = initializeApp(FIREBASE_CONFIG);
                 state.db = getFirestore(app);
                 state.auth = getAuth(app);
+                state.persistenceMode = 'firestore';
 
                 // Authenticate
                 if (INITIAL_AUTH_TOKEN) {
@@ -166,23 +250,19 @@
                     if (user) {
                         state.userId = user.uid;
                         document.getElementById('user-info').textContent = `User ID: ${state.userId}`;
-                        state.isAuthReady = true;
-                        state.sceneDataRef = doc(state.db, `artifacts/${APP_ID}/public/data/scenes`, state.userId);
-                        loadScene();
                     } else {
-                        // Use a random UUID for anonymous/unauthenticated users
                         state.userId = localStorage.getItem('anonUserId') || crypto.randomUUID();
                         localStorage.setItem('anonUserId', state.userId);
                         document.getElementById('user-info').textContent = `User ID: ${state.userId.substring(0, 8)}... (Anon)`;
-                        state.isAuthReady = true;
-                        state.sceneDataRef = doc(state.db, `artifacts/${APP_ID}/public/data/scenes`, state.userId);
-                        // If no user, load default scene structure
-                        loadScene();
                     }
+
+                    state.isAuthReady = true;
+                    state.sceneDataRef = doc(state.db, `artifacts/${APP_ID}/public/data/scenes`, state.userId);
+                    loadScene();
                 });
             } catch (e) {
                 console.error("Firebase setup failed:", e);
-                document.getElementById('code-output').textContent += `\nError: Firebase setup failed. ${e.message}`;
+                setupLocalPersistence(`Firebase setup failed. ${e.message}`);
             }
         }
 
@@ -435,7 +515,93 @@
 
         // --- MODE MANAGEMENT ---
 
+        function blockToPrism(block) {
+            switch (block.type) {
+                case 'move':
+                    return `move(cube, ${block.a}, ${block.b}, ${block.c})`;
+                case 'rotate':
+                    return `rotate(cube, ${block.a}, ${block.b}, ${block.c})`;
+                case 'pulse':
+                    return `pulse(cube, ${block.a}, ${block.b})`;
+                case 'wireframe':
+                    return `wireframe(cube, ${Boolean(block.a)})`;
+                default:
+                    return '';
+            }
+        }
+
+        function renderBlockProgram() {
+            const list = document.getElementById('block-sequence');
+            if (!list) return;
+
+            if (state.blockProgram.length === 0) {
+                list.innerHTML = '<div class="text-gray-400 text-sm">No blocks yet. Add one above 👆</div>';
+                return;
+            }
+
+            list.innerHTML = '';
+            state.blockProgram.forEach((block, index) => {
+                const item = document.createElement('div');
+                item.className = 'scratch-block';
+                item.innerHTML = `
+                    <span>${index + 1}. ${blockToPrism(block)}</span>
+                    <span class="flex gap-1">
+                        <button class="block-mini-btn" onclick="app.moveBlock(${index}, -1)">↑</button>
+                        <button class="block-mini-btn" onclick="app.moveBlock(${index}, 1)">↓</button>
+                        <button class="block-mini-btn" onclick="app.removeBlock(${index})">✕</button>
+                    </span>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        function addBlockFromUI() {
+            const type = document.getElementById('block-type').value;
+            const a = parseFloat(document.getElementById('block-a').value || '0');
+            const b = parseFloat(document.getElementById('block-b').value || '0');
+            const c = parseFloat(document.getElementById('block-c').value || '0');
+
+            const block = { type, a, b, c };
+            if (type === 'wireframe') {
+                block.a = a > 0 ? 1 : 0;
+            }
+
+            state.blockProgram.push(block);
+            renderBlockProgram();
+        }
+
+        function removeBlock(index) {
+            state.blockProgram.splice(index, 1);
+            renderBlockProgram();
+        }
+
+        function moveBlock(index, delta) {
+            const target = index + delta;
+            if (target < 0 || target >= state.blockProgram.length) return;
+            const [item] = state.blockProgram.splice(index, 1);
+            state.blockProgram.splice(target, 0, item);
+            renderBlockProgram();
+        }
+
+        function clearBlocks() {
+            state.blockProgram = [];
+            renderBlockProgram();
+        }
+
+        function executeBlockProgram() {
+            if (state.blockProgram.length === 0) {
+                document.getElementById('code-output').textContent += `
+[System] Add blocks first before running.`;
+                return;
+            }
+
+            const generatedCode = state.blockProgram.map(blockToPrism).filter(Boolean).join('\n');
+            document.getElementById('prism-code').value = generatedCode;
+            executePrismCode();
+        }
+
         window.app = {
+
             setMode: function (newMode) {
                 if (state.mode === newMode) return;
                 state.mode = newMode;
@@ -503,7 +669,12 @@
             addObject,
             saveScene: saveScene,
             executePrismCode: executePrismCode,
-            requestCodeGeneration: requestCodeGeneration
+            requestCodeGeneration: requestCodeGeneration,
+            addBlockFromUI: addBlockFromUI,
+            removeBlock: removeBlock,
+            moveBlock: moveBlock,
+            clearBlocks: clearBlocks,
+            executeBlockProgram: executeBlockProgram
         };
 
         function selectObject(object) {
@@ -678,6 +849,12 @@
 
         async function requestCodeGeneration() {
             const output = document.getElementById('code-output');
+
+            if (!API_KEY) {
+                output.textContent += "\n[System] AI Code Assist is disabled until an API key is configured.\n";
+                return;
+            }
+
             output.textContent = "Requesting AI code generation... (This may take a moment)\n";
 
             const currentCode = document.getElementById('prism-code').value;
@@ -747,20 +924,32 @@
         }
 
         async function saveScene() {
-            if (!state.isAuthReady || !state.sceneDataRef) {
-                console.warn("Auth not ready or scene ref missing. Cannot save.");
+            if (!state.isAuthReady) {
+                console.warn("Auth not ready. Cannot save.");
                 return;
             }
 
             const data = getSceneData();
             if (!data) return;
 
+            if (state.persistenceMode === 'local') {
+                localStorage.setItem(state.localSceneKey, JSON.stringify({ cube: data }));
+                document.getElementById('code-output').textContent += `\n[System] Scene saved locally.`;
+                return;
+            }
+
+            if (!state.sceneDataRef) {
+                console.warn("Scene reference missing for Firestore mode.");
+                return;
+            }
+
             try {
                 await setDoc(state.sceneDataRef, { cube: data });
-                document.getElementById('code-output').textContent += "\n[System] Scene saved to Firestore.";
+                document.getElementById('code-output').textContent += `\n[System] Scene saved to Firestore.`;
             } catch (e) {
                 console.error("Error saving document: ", e);
-                document.getElementById('code-output').textContent += `\n[System Error] Failed to save scene. ${e.message}`;
+                document.getElementById('code-output').textContent += `
+[System Error] Failed to save scene. ${e.message}`;
             }
         }
 
@@ -773,31 +962,50 @@
 
 
         async function loadScene() {
-            if (!state.isAuthReady || !state.sceneDataRef) return;
+            if (!state.isAuthReady) return;
+
+            if (state.persistenceMode === 'local') {
+                try {
+                    const saved = localStorage.getItem(state.localSceneKey);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        if (parsed?.cube) {
+                            addObject('Cube', parsed.cube);
+                            document.getElementById('code-output').textContent += `\n[System] Scene loaded from local storage.`;
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Error loading local scene:", e);
+                    document.getElementById('code-output').textContent += `
+[System Error] Failed to load local scene. ${e.message}`;
+                }
+
+                document.getElementById('code-output').textContent += `\n[System] No local scene found. Using default cube.`;
+                if (!state.cubeMesh) addObject('Cube');
+                return;
+            }
+
+            if (!state.sceneDataRef) return;
 
             try {
                 const docSnap = await getDoc(state.sceneDataRef);
                 if (docSnap.exists() && docSnap.data().cube) {
                     const data = docSnap.data().cube;
-                    
-                    // Call addObject with the loaded data
                     addObject('Cube', data);
-                    
-                    document.getElementById('code-output').textContent += "\n[System] Scene loaded from Firestore.";
-
+                    document.getElementById('code-output').textContent += `\n[System] Scene loaded from Firestore.`;
                 } else {
-                    document.getElementById('code-output').textContent += "\n[System] No saved scene found. Using default cube.";
-                    // Ensure a default cube is added if none exists (important for initial load)
+                    document.getElementById('code-output').textContent += `\n[System] No saved scene found. Using default cube.`;
                     if (!state.cubeMesh) {
                          addObject('Cube');
                     }
                 }
             } catch (e) {
                 console.error("Error loading document: ", e);
-                document.getElementById('code-output').textContent += `\n[System Error] Failed to load scene. ${e.message}`;
+                document.getElementById('code-output').textContent += `
+[System Error] Failed to load scene. ${e.message}`;
             }
         }
-
 
         // --- ANIMATION AND RENDER LOOP ---
 
@@ -838,6 +1046,7 @@
         // --- INITIALIZATION ON LOAD ---
         window.onload = function () {
             initThree();
+            renderBlockProgram();
             animate();
             setupFirebase();
         };
@@ -845,4 +1054,3 @@
     </script>
 </body>
 </html>
-
